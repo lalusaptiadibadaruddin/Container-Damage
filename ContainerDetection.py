@@ -10,7 +10,6 @@ yolo_model = YOLO("Weights/yolov8.pt")
 
 # definisi class
 class_labels = ['Karat', 'Lubang', 'Patah', 'Penyok', 'Retak']
-# class_labels = ['Dent', 'Hole', 'Rust']
 # print(class_labels)
 
 # load image
