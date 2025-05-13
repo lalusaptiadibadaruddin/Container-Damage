@@ -36,29 +36,34 @@ class CameraApp(QWidget):
         self.setWindowTitle("IP Camera System Container Damage")
         # self.setGeometry(100, 100, 1200, 600)
 
-        # self.layout = QVBoxLayout()
-        # self.label1 = QLabel(self)
-        # self.label2 = QLabel(self)
-        # self.label3 = QLabel(self)
-        # self.label4 = QLabel(self)
-        # self.layout.addWidget(self.label1)
-        # self.layout.addWidget(self.label2)
-        # self.layout.addWidget(self.label3)
-        # self.layout.addWidget(self.label4)
-        # self.setLayout(self.layout)
-
         # Ganti layout menjadi QGridLayout
         self.layout = QGridLayout()
+
+        # Menambahkan nama kamera di atas label untuk setiap kamera
+        self.label1_name = QLabel("Kamera 1", self)
+        self.label2_name = QLabel("Kamera 2", self)
+        self.label3_name = QLabel("Kamera 3", self)
+        self.label4_name = QLabel("Kamera 4", self)
+
         self.label1 = QLabel(self)
         self.label2 = QLabel(self)
         self.label3 = QLabel(self)
         self.label4 = QLabel(self)
 
-        # Tambahkan label ke dalam grid layout
+        # Menambahkan nama kamera dan frame ke dalam layout
         self.layout.addWidget(self.label1, 0, 0)
         self.layout.addWidget(self.label2, 0, 1)
         self.layout.addWidget(self.label3, 1, 0)
         self.layout.addWidget(self.label4, 1, 1)
+
+        self.label1.setScaledContents(True)
+        self.label2.setScaledContents(True)
+        self.label3.setScaledContents(True)
+        self.label4.setScaledContents(True)
+
+        # Menambahkan spasi antar kolom dan baris
+        self.layout.setHorizontalSpacing(20)  # Jarak horizontal antara kamera
+        self.layout.setVerticalSpacing(20)  # Jarak vertikal antara kamera
 
         self.setLayout(self.layout)
 
@@ -72,25 +77,6 @@ class CameraApp(QWidget):
         self.save_dir = "captured"
         os.makedirs(self.save_dir, exist_ok=True)
 
-        # Load dan siapkan background
-        # self.background = cv2.imread("background2.jpg")
-        # if self.background is not None:
-        #     ret_test, test_frame = self.cap1.read()
-        #     if ret_test:
-        #         test_height, test_width = test_frame.shape[:2]
-        #         self.background = cv2.resize(
-        #             self.background, (test_width, test_height))
-        #         self.background = cv2.cvtColor(
-        #             self.background, cv2.COLOR_BGR2GRAY)
-        #         self.background = cv2.GaussianBlur(
-        #             self.background, (21, 21), 0)
-        #     else:
-        #         print("Tidak dapat membaca frame kamera untuk resize background.")
-        #         sys.exit()
-        # else:
-        #     print("Background image not found!")
-        #     sys.exit()
-
         self.prev_gray = None  # Untuk frame sebelumnya
 
         self.cooldown_active = False
@@ -102,6 +88,10 @@ class CameraApp(QWidget):
         self.model = YOLO(weight_path)
         self.class_labels = ['Karat', 'Lubang', 'Patah', 'Penyok', 'Retak']
 
+        weight_path2 = os.path.abspath("Weights/yolov8Container.pt")
+        self.model2 = YOLO(weight_path2)
+        self.class_labels2 = ['0', '1', '2']
+
     def generate_black_qimage(self, width, height):
         black_frame = np.zeros(
             (height, width, 3), dtype=np.uint8)  # Hitam penuh
@@ -109,48 +99,128 @@ class CameraApp(QWidget):
         return QImage(rgb_black.data, width, height, width * 3, QImage.Format_RGB888)
 
     def ocr_image_to_text(self, image_path):
-
-        # Load image
-        img = cv2.imread(image_path)
-        if img is None:
-            print(f"Gagal membaca gambar dari path: {image_path}")
-            return ""
-
-        # --- STEP 1: Zoom image (digital zoom) ---
-        zoom_factor = 2.0  # Ubah sesuai kebutuhan
-        height, width = img.shape[:2]
-        img_zoomed = cv2.resize(
-            img, (int(width * zoom_factor), int(height * zoom_factor)))
-
-        # Inisialisasi
-        valid_words = ['22G1', '22G0', '45R1', '22T1']
         reader = easyocr.Reader(['en'], gpu=False)
-        results = reader.readtext(img_zoomed)
+        img = cv2.imread(image_path)
+        result = reader.readtext(img)
+        for detection in result:
+            print(f"[text {detection}]:")
+        # Load image
+        # img = cv2.imread(image_path)
+        # if img is None:
+        #     print(f"Gagal membaca gambar dari path: {image_path}")
+        #     return ""
 
-        if not results:
-            print("Tidak ada teks yang terdeteksi dalam gambar.")
-            return ""
+        # # Get image dimensions
+        # height, width = img.shape[:2]
 
-        corrected_texts = []
+        # # Crop the right half of the image
+        # right_half = img[:, width//2:, :]
 
-        for bbox, raw_text, score in results:
-            text_upper = raw_text.upper()
-            text_replaced = text_upper.replace('6', 'G')
+        # # Zoom the right half by scaling it up by 2x
+        # zoom_factor = 2
+        # zoomed_right_half = cv2.resize(
+        #     right_half, None, fx=zoom_factor, fy=zoom_factor, interpolation=cv2.INTER_LINEAR)
 
-            # Cari kemiripan terbaik dengan valid_words
-            match = (difflib.get_close_matches(text_replaced, valid_words, n=1, cutoff=0.8) or
-                     difflib.get_close_matches(text_upper, valid_words, n=1, cutoff=0.8))
+        # # Create a visualization image (original with right side highlighted)
+        # vis_img = img.copy()
+        # # Draw a green rectangle on the right half to show the OCR detection area
+        # cv2.rectangle(vis_img, (width//2, 0), (width, height), (0, 255, 0), 2)
 
-            final_text = match[0] if match else text_upper
-            cleaned_text = re.sub(r'[\[\]]', '', final_text)
+        # valid_words = ['22G1', '22G0', '45R1', '22T1']
 
-            corrected_texts.append((bbox, cleaned_text, score))
+        # # instance text detector
+        # reader = easyocr.Reader(['en'], gpu=False)
+        # # detect text on zoomed right half of image
+        # text_ = reader.readtext(zoomed_right_half)
+        # threshold = 0.25
 
-        # Tampilkan hasil
-        for _, text, _ in corrected_texts:
-            print(text)
+        # # Collect all detected text
+        # all_detected_text = []
 
-    def detect_damage_yolo(self, image_path):
+        # # Sort text items by their y-coordinate (top to bottom)
+        # text_.sort(key=lambda x: x[0][0][1])  # Sort by top-left y-coordinate
+
+        # # draw text on the visualization image
+        # for i, t in enumerate(text_):
+        #     # print(t)
+        #     bbox, text, score = t
+        #     # 1. OCR asli
+        #     text_original = text.upper()
+        #     # 2. OCR setelah ganti 6 -> G
+        #     text_replaced = text_original.replace('6', 'G')
+
+        #     # 3. Cari kemiripan dengan valid_words
+        #     match_orig = difflib.get_close_matches(
+        #         text_original, valid_words, n=1, cutoff=0.8)
+        #     match_fixed = difflib.get_close_matches(
+        #         text_replaced, valid_words, n=1, cutoff=0.8)
+
+        #     # 4. Pilih hasil yang paling cocok
+        #     if match_fixed and (not match_orig or match_fixed[0] != match_orig[0]):
+        #         final_text = match_fixed[0]
+        #     elif match_orig:
+        #         final_text = match_orig[0]
+        #     else:
+        #         final_text = text_original  # Tidak cocok, pakai hasil OCR asli
+
+        #     # Clean the text - remove square brackets
+        #     cleaned_text = re.sub(r'[\[\]]', '', final_text)
+
+        #     # Store cleaned text (we'll process it after the loop)
+        #     if cleaned_text:
+        #         all_detected_text.append((i, cleaned_text, bbox))
+
+        #     if score > threshold:
+        #         # Adjust bounding box coordinates to match the original image
+        #         # Need to scale back down and offset for the right half
+        #         bbox_adjusted = [
+        #             (bbox[0][0]/zoom_factor + width//2,
+        #              bbox[0][1]/zoom_factor),  # top-left
+        #             (bbox[1][0]/zoom_factor + width//2,
+        #              bbox[1][1]/zoom_factor),  # top-right
+        #             (bbox[2][0]/zoom_factor + width//2,
+        #              bbox[2][1]/zoom_factor),  # bottom-right
+        #             (bbox[3][0]/zoom_factor + width//2,
+        #              bbox[3][1]/zoom_factor)   # bottom-left
+        #         ]
+
+        #         # Draw rectangle and text on original image
+        #         cv2.rectangle(vis_img,
+        #                       (int(bbox_adjusted[0][0]),
+        #                        int(bbox_adjusted[0][1])),
+        #                       (int(bbox_adjusted[2][0]),
+        #                        int(bbox_adjusted[2][1])),
+        #                       (0, 0, 255), 2)
+        #         cv2.putText(vis_img, cleaned_text,
+        #                     (int(bbox_adjusted[0][0]), int(
+        #                         bbox_adjusted[0][1]) - 10),
+        #                     cv2.FONT_HERSHEY_COMPLEX, 0.50, (255, 0, 0), 2)
+
+        # # Only combine the first 3 lines, keep the rest separate
+        # first_three = [text for i, text, _ in all_detected_text[:3] if text]
+        # combined_text = ''.join(first_three)
+        print("Container Number:")
+
+    def is_container_present(self, frame):
+        # Simpan frame sementara untuk deteksi
+        temp_path = os.path.join(self.save_dir, "temp_cam1.jpg")
+        cv2.imwrite(temp_path, frame)
+
+        # Lakukan deteksi dengan YOLOv8
+        results = self.model2(temp_path)[0]
+
+        # Cek apakah ada label '0 atau 1'
+        for box in results.boxes:
+            cls_id = int(box.cls[0])
+            label = self.class_labels2[cls_id] if cls_id < len(
+                self.class_labels2) else "Unknown"
+            if label.lower() == "0" or label.lower() == "1":
+                print("Validasi sukses: Container terdeteksi")
+                return True
+        print("Validasi gagal: Bukan container")
+        return False
+
+    def detect_damage_yolo(self, image_path,  camera_id=None):
         results = self.model(image_path)[0]
         # Baca ulang gambar
         img = cv2.imread(image_path)
@@ -181,11 +251,16 @@ class CameraApp(QWidget):
             y_offset += 25
 
         # Simpan hasil dengan anotasi
-        annotated_path = image_path.replace(".jpg", "_detected.jpg")
+        annotated_path = image_path.replace(
+            ".jpg", f"_cam{camera_id}_detected.jpg")
         cv2.imwrite(annotated_path, img)
-        print(f"Hasil deteksi disimpan: {annotated_path}")
-        print(f"Total Damage: {sum(damage_counter.values())}")
+        # Logging
+        print(f"[Kamera {camera_id}] Hasil deteksi disimpan: {annotated_path}")
+        print(
+            f"[Kamera {camera_id}] Total Damage: {sum(damage_counter.values())}")
+        print(f"[Kamera {camera_id}] Per kategori:")
         print("Per kategori:")
+
         for label, count in damage_counter.items():
             print(f" - {label}: {count}")
 
@@ -200,6 +275,9 @@ class CameraApp(QWidget):
         if ret1:
             clean_frame1 = frame1.copy()
             height1, width1, _ = frame1.shape
+            cv2.putText(frame1, "Kamera 1", (10, 30), cv2.FONT_HERSHEY_SIMPLEX,
+                        0.50, (0, 255, 0), 1, cv2.LINE_AA)
+
             # center_x = width1 // 2
             center_x = width1 - 100
             # center_x = int(width1 * 0.75)  # Dinamis berdasarkan lebar
@@ -246,6 +324,12 @@ class CameraApp(QWidget):
 
                 if x <= center_x <= x + w:
                     print("Bounding Box Touched the Line!")
+
+                    # Validasi dulu apakah benar container
+                    if not self.is_container_present(clean_frame1):
+                        print("Deteksi dibatalkan: Bukan container")
+                        return
+
                     self.cooldown_active = True
                     self.cooldown_start_time = current_time
                     # Simpan gambar dari kamera 1 dan 2
@@ -260,17 +344,18 @@ class CameraApp(QWidget):
                         self.save_dir, f"cam4_{timestamp}.jpg")
                     cv2.imwrite(filename1, clean_frame1)
 
-                    if ret2:
-                        cv2.imwrite(filename2, frame2)
-                    if ret3:
-                        cv2.imwrite(filename3, frame3)
-                    if ret4:
-                        cv2.imwrite(filename4, frame4)
-                    print(
-                        f"Gambar disimpan ke: {filename1} dan {filename2 if ret2 else '[kamera 2 gagal]'}")
+                    # if ret2:
+                    #     cv2.imwrite(filename2, frame2)
+                    # if ret3:
+                    #     cv2.imwrite(filename3, frame3)
+                    # if ret4:
+                    #     cv2.imwrite(filename4, frame4)
 
-                    self.detect_damage_yolo(filename2)
-                    self.ocr_image_to_text(filename2)
+                    self.detect_damage_yolo(filename1, camera_id=1)
+                    # self.detect_damage_yolo(filename2, camera_id=2)
+                    # self.detect_damage_yolo(filename3, camera_id=3)
+                    # self.detect_damage_yolo(filename4, camera_id=4)
+                    self.ocr_image_to_text(filename1)
                     break
 
                 # Gambar bounding box
@@ -290,17 +375,23 @@ class CameraApp(QWidget):
             self.label1.setPixmap(QPixmap.fromImage(black_img1))
 
         if ret2:
+
             height2, width2, _ = frame2.shape
+            cv2.putText(frame2, "Kamera 2", (10, 30), cv2.FONT_HERSHEY_SIMPLEX,
+                        1, (0, 255, 0), 3, cv2.LINE_AA)
+
             rgb2 = cv2.cvtColor(frame2, cv2.COLOR_BGR2RGB)
             qimg2 = QImage(rgb2.data, width2, height2,
                            width2 * 3, QImage.Format_RGB888)
             self.label2.setPixmap(QPixmap.fromImage(qimg2))
         else:
-            black_img = self.generate_black_qimage(640, 4800)
+            black_img = self.generate_black_qimage(640, 480)
             self.label2.setPixmap(QPixmap.fromImage(black_img))
 
         if ret3:
             height3, width3, _ = frame3.shape
+            cv2.putText(frame3, "Kamera 3", (10, 30), cv2.FONT_HERSHEY_SIMPLEX,
+                        2, (0, 255, 0), 3, cv2.LINE_AA)
             rgb3 = cv2.cvtColor(frame3, cv2.COLOR_BGR2RGB)
             qimg3 = QImage(rgb3.data, width3, height3,
                            width3 * 3, QImage.Format_RGB888)
@@ -311,6 +402,8 @@ class CameraApp(QWidget):
 
         if ret4:
             height4, width4, _ = frame4.shape
+            cv2.putText(frame4, "Kamera 4", (10, 30), cv2.FONT_HERSHEY_SIMPLEX,
+                        2, (0, 255, 0), 1, cv2.LINE_AA)
             rgb4 = cv2.cvtColor(frame4, cv2.COLOR_BGR2RGB)
             qimg4 = QImage(rgb4.data, width4, height4,
                            width4 * 3, QImage.Format_RGB888)
