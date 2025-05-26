@@ -1,4 +1,3 @@
-
 import cv2
 import jwt
 import os
@@ -10,19 +9,20 @@ import json
 import requests
 import datetime
 
-# Load YOLO model folder weights
-yolo_model = YOLO("Weights/yolov8.pt")
+# Get the directory of the current script
+base_dir = os.path.dirname(os.path.abspath(__file__))
+
+# Load YOLO model with absolute path
+yolo_model = YOLO(os.path.join(base_dir, "Weights", "yolov8.pt"))
+
 # definisi class
 class_labels = ['Karat', 'Lubang', 'Patah', 'Penyok', 'Retak']
 
-upload_dir = os.path.abspath(
-    os.path.join(
-        os.path.dirname(__file__),  # folder tempat script ini
-        'monitoring-container-damage-be',
-        'uploads',
-        'manual-scan'
-    )
-)
+# Naik satu folder ke root project
+root_dir = os.path.abspath(os.path.join(base_dir, '..'))
+
+# Bangun path akhir
+upload_dir = os.path.join(root_dir, 'monitoring-container-damage-be', 'uploads', 'manual-scan')
 
 
 def generate_jwt_token():
@@ -51,7 +51,7 @@ def process_scan_manual_images(upload_dir):
         if not filename.lower().endswith(image_extensions):
             continue
 
-        prefix = filename.split('_')[0].capitalize()
+        prefix = filename.split('-')[0].capitalize()
         if prefix not in image_data:
             continue
 
@@ -96,9 +96,9 @@ def process_scan_manual_images(upload_dir):
 
     # Generate JWT token
     token = generate_jwt_token()
-    # print(token)
+    print(token)
 
-    url = "http://localhost:3000/api/containers/auto-scan"  # Ganti dengan URL API-mu
+    url = "http://localhost:5000/api/containers/auto-scan"  # Ganti dengan URL API-mu
     headers = {
         'Authorization': f'Bearer {token}'
     }
