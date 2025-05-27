@@ -22,7 +22,8 @@ class_labels = ['Karat', 'Lubang', 'Patah', 'Penyok', 'Retak']
 root_dir = os.path.abspath(os.path.join(base_dir, '..'))
 
 # Bangun path akhir
-upload_dir = os.path.join(root_dir, 'monitoring-container-damage-be', 'uploads', 'manual-scan')
+upload_dir = os.path.join(
+    root_dir, 'monitoring-container-damage-be', 'uploads', 'manual-scan')
 
 
 def generate_jwt_token():
@@ -52,10 +53,7 @@ def process_scan_manual_images(upload_dir):
             continue
 
         prefix = filename.split('-')[0].capitalize()
-<<<<<<< HEAD
 
-=======
->>>>>>> 5128bd3a23ef8653ddcfdc225294df7eb5e70593
         if prefix not in image_data:
             continue
 
