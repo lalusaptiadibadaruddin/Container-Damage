@@ -1,13 +1,17 @@
-import cv2
-import jwt
 import os
+import json
+import time
+import requests
 from ultralytics import YOLO
 import difflib
 import easyocr
 import re
 import json
-import requests
 import datetime
+import cv2
+import jwt
+from requests.exceptions import ConnectionError
+
 
 # Get the directory of the current script
 base_dir = os.path.dirname(os.path.abspath(__file__))
@@ -23,7 +27,7 @@ root_dir = os.path.abspath(os.path.join(base_dir, '..'))
 
 # Bangun path akhir
 upload_dir = os.path.join(
-    root_dir, 'monitoring-container-damage-be', 'uploads', 'manual-scan')
+    root_dir, 'containerdamage', 'monitoring-container-damage-be', 'uploads', 'manual-scan')
 
 
 def generate_jwt_token():
@@ -41,129 +45,6 @@ def generate_jwt_token():
     # Generate the token
     token = jwt.encode(code, jwt_secret, algorithm="HS256")
     return token
-
-
-def process_scan_manual_images(upload_dir):
-    image_extensions = (".jpg", ".jpeg", ".png")
-    image_data = {"Back": None, "Left": None, "Top": None, "Right": None}
-    container_number = container_type = ""
-
-    for filename in os.listdir(upload_dir):
-        if not filename.lower().endswith(image_extensions):
-            continue
-
-        prefix = filename.split('-')[0].capitalize()
-
-        if prefix not in image_data:
-            continue
-
-        image_path = os.path.join(upload_dir, filename)
-
-        if prefix == "Back":
-            container_number, container_type = ocr_image_to_text(image_path)
-
-        image_data[prefix] = detect_damage_yolo(image_path, prefix)
-
-    if not image_data.get("Back"):
-        print("Gambar Back harus tersedia.")
-        return
-
-    details_list = []
-
-    if image_data["Back"]:
-        details_list.append(image_data["Back"]["detail"])
-    if image_data["Left"]:
-        details_list.append(image_data["Left"]["detail"])
-    if image_data["Top"]:
-        details_list.append(image_data["Top"]["detail"])
-    if image_data["Right"]:
-        details_list.append(image_data["Right"]["detail"])
-
-    payload = {
-        "no_container": container_number,
-        "container_type": container_type,
-        "details": json.dumps(details_list)
-    }
-
-    files = []
-
-    for side in ["Back", "Left", "Top", "Right"]:
-        if image_data[side] and "image_path" in image_data[side]:
-            image_path = image_data[side]["image_path"]
-            files.append((
-                'images',
-                (os.path.basename(image_path), open(
-                    image_path, 'rb'), 'image/jpeg')
-            ))
-
-    # Generate JWT token
-    token = generate_jwt_token()
-    print(token)
-
-    url = "http://localhost:5000/api/containers/auto-scan"  # Ganti dengan URL API-mu
-    headers = {
-        'Authorization': f'Bearer {token}'
-    }
-
-    # print(payload)
-    # Kirim POST request
-    response = requests.post(
-        url,
-        headers=headers,
-        data=payload,
-        files=files
-    )
-
-    # print(response.text)
-    # Tutup semua file setelah upload untuk menghindari resource leak
-    for _, file_tuple in files:
-        file_tuple[1].close()
-
-    if response.status_code == 201:
-        print("Data successfully sent to API")
-        print(response.json())
-
-        # Hapus semua file image hasil deteksi
-        for side in ["Back", "Left", "Top", "Right"]:
-            if image_data[side] and "image_path" in image_data[side]:
-                try:
-                    os.remove(image_data[side]["image_path"])
-                    print(f"Deleted: {image_data[side]['image_path']}")
-                except Exception as e:
-                    print(
-                        f"Failed to delete {image_data[side]['image_path']}: {e}")
-
-        # Hapus juga file gambar input dari folder manual-scan
-        for filename in os.listdir(upload_dir):
-            if filename.lower().endswith(image_extensions):
-                file_path = os.path.join(upload_dir, filename)
-                try:
-                    os.remove(file_path)
-                    print(f"Deleted input image: {file_path}")
-                except Exception as e:
-                    print(f"Failed to delete input image {file_path}: {e}")
-    else:
-        print(f"Failed to send data. Status code: {response.status_code}")
-        print(response.text)
-        # Hapus semua file hasil deteksi
-        for side in ["Back", "Left", "Top", "Right"]:
-            if image_data[side] and "image_path" in image_data[side]:
-                try:
-                    os.remove(image_data[side]["image_path"])
-                    print(f"Deleted: {image_data[side]['image_path']}")
-                except Exception as e:
-                    print(
-                        f"Failed to delete {image_data[side]['image_path']}: {e}")
-
-        # Hapus juga file gambar input dari folder manual-scan
-        for filename in os.listdir(upload_dir):
-            if filename.lower().endswith(image_extensions):
-                file_path = os.path.join(upload_dir, filename)
-                try:
-                    os.remove(file_path)
-                    print(f"Deleted input image: {file_path}")
-                except Exception as e:
-                    print(f"Failed to delete input image {file_path}: {e}")
 
 
 def ocr_image_to_text(image_path):
@@ -187,7 +68,7 @@ def ocr_image_to_text(image_path):
     # Draw a green rectangle on the right half to show the OCR detection area
     cv2.rectangle(vis_img, (width//2, 0), (width, height), (0, 255, 0), 2)
 
-    valid_words = ['22G1', '22G0', '45R1', '22T1', '22UG']
+    valid_words = ['22G1', '22G0', '45R1', '22T1']
 
     # instance text detector
     reader = easyocr.Reader(['en'], gpu=False)
@@ -212,6 +93,7 @@ def ocr_image_to_text(image_path):
         # 3. Cari kemiripan dengan valid_words
         match_orig = difflib.get_close_matches(
             text_original, valid_words, n=1, cutoff=0.8)
+
         match_fixed = difflib.get_close_matches(
             text_replaced, valid_words, n=1, cutoff=0.8)
 
@@ -308,6 +190,7 @@ def detect_damage_yolo(image_path, prefix):
     # Simpan hasil dengan anotasi
     annotated_path = image_path.replace(
         ".jpg", f"_detected.jpg")
+
     cv2.imwrite(annotated_path, img)
 
     # Mapping label
@@ -335,6 +218,128 @@ def detect_damage_yolo(image_path, prefix):
             "categories": categories
         }
     }
+
+
+def collect_images(upload_dir, image_extensions=(".jpg", ".jpeg", ".png")):
+    image_data = {"Back": None, "Left": None, "Top": None, "Right": None}
+    container_number = container_type = ""
+
+    for filename in os.listdir(upload_dir):
+        if not filename.lower().endswith(image_extensions):
+            continue
+
+        prefix = filename.split('-')[0].capitalize()
+        if prefix not in image_data:
+            continue
+
+        image_path = os.path.join(upload_dir, filename)
+
+        if prefix == "Back":
+            container_number, container_type = ocr_image_to_text(image_path)
+
+        image_data[prefix] = detect_damage_yolo(image_path, prefix)
+
+    return container_number, container_type, image_data
+
+
+def prepare_payload(container_number, container_type, image_data):
+    details_list = []
+
+    for side in ["Back", "Left", "Top", "Right"]:
+        if image_data[side]:
+            details_list.append(image_data[side]["detail"])
+
+    payload = {
+        "no_container": container_number,
+        "container_type": container_type,
+        "details": json.dumps(details_list)
+    }
+
+    return payload
+
+
+def prepare_files(image_data):
+    files = []
+    for side in ["Back", "Left", "Top", "Right"]:
+        if image_data[side] and "image_path" in image_data[side]:
+            image_path = image_data[side]["image_path"]
+            try:
+                file = open(image_path, 'rb')
+                files.append(
+                    ('images', (os.path.basename(image_path), file, 'image/jpeg')))
+            except Exception as e:
+                print(f"Gagal membuka file {image_path}: {e}")
+    return files
+
+
+def send_to_api(payload, files):
+    token = generate_jwt_token()
+    url = "http://localhost:3000/api/containers/auto-scan"
+    headers = {
+        'Authorization': f'Bearer {token}'
+    }
+
+    try:
+        response = requests.post(url, headers=headers,
+                                 data=payload, files=files, timeout=10)
+        if response.status_code == 201:
+            print("Data berhasil dikirim ke API.")
+            print(response.json())
+        else:
+            print(f"Gagal mengirim data. Status: {response.status_code}")
+            print(response.text)
+    except ConnectionError as ce:
+        print("Gagal koneksi ke API:", ce)
+        time.sleep(1.0)
+    except Exception as e:
+        print("Terjadi error saat mengirim ke API:", e)
+    finally:
+        for _, file_tuple in files:
+            try:
+                file_tuple[1].close()
+            except Exception as e:
+                print("Gagal menutup file:", e)
+
+
+def cleanup_files(image_data, upload_dir):
+    for side in ["Back", "Left", "Top", "Right"]:
+        if image_data[side] and "image_path" in image_data[side]:
+            try:
+                os.remove(image_data[side]["image_path"])
+                print(f"Deleted result: {image_data[side]['image_path']}")
+                time.sleep(0.2)
+            except Exception as e:
+                print(
+                    f"Failed to delete result image {image_data[side]['image_path']}: {e}")
+
+    for filename in os.listdir(upload_dir):
+        if filename.lower().endswith((".jpg", ".jpeg", ".png")):
+            file_path = os.path.join(upload_dir, filename)
+            try:
+                os.remove(file_path)
+                print(f"Deleted input: {file_path}")
+                time.sleep(0.2)
+            except Exception as e:
+                print(f"Failed to delete input image {file_path}: {e}")
+
+
+def process_scan_manual_images(upload_dir):
+    container_number, container_type, image_data = collect_images(upload_dir)
+
+    if not image_data.get("Back"):
+        print("Gambar Back harus tersedia.")
+        cleanup_files(image_data, upload_dir)
+        return
+
+    if not container_number:
+        print("Nomor kontainer tidak terdeteksi.")
+        cleanup_files(image_data, upload_dir)
+        return
+
+    payload = prepare_payload(container_number, container_type, image_data)
+    files = prepare_files(image_data)
+    send_to_api(payload, files)
+    cleanup_files(image_data, upload_dir)
 
 
 if __name__ == "__main__":
