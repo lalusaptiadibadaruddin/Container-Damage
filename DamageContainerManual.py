@@ -51,7 +51,8 @@ def process_scan_manual_images(upload_dir):
         if not filename.lower().endswith(image_extensions):
             continue
 
-        prefix = filename.split('_')[0].capitalize()
+        prefix = filename.split('-')[0].capitalize()
+
         if prefix not in image_data:
             continue
 
@@ -103,6 +104,7 @@ def process_scan_manual_images(upload_dir):
         'Authorization': f'Bearer {token}'
     }
 
+    # print(payload)
     # Kirim POST request
     response = requests.post(
         url,
@@ -129,9 +131,38 @@ def process_scan_manual_images(upload_dir):
                 except Exception as e:
                     print(
                         f"Failed to delete {image_data[side]['image_path']}: {e}")
+
+        # Hapus juga file gambar input dari folder manual-scan
+        for filename in os.listdir(upload_dir):
+            if filename.lower().endswith(image_extensions):
+                file_path = os.path.join(upload_dir, filename)
+                try:
+                    os.remove(file_path)
+                    print(f"Deleted input image: {file_path}")
+                except Exception as e:
+                    print(f"Failed to delete input image {file_path}: {e}")
     else:
         print(f"Failed to send data. Status code: {response.status_code}")
         print(response.text)
+        # Hapus semua file hasil deteksi
+        for side in ["Back", "Left", "Top", "Right"]:
+            if image_data[side] and "image_path" in image_data[side]:
+                try:
+                    os.remove(image_data[side]["image_path"])
+                    print(f"Deleted: {image_data[side]['image_path']}")
+                except Exception as e:
+                    print(
+                        f"Failed to delete {image_data[side]['image_path']}: {e}")
+
+        # Hapus juga file gambar input dari folder manual-scan
+        for filename in os.listdir(upload_dir):
+            if filename.lower().endswith(image_extensions):
+                file_path = os.path.join(upload_dir, filename)
+                try:
+                    os.remove(file_path)
+                    print(f"Deleted input image: {file_path}")
+                except Exception as e:
+                    print(f"Failed to delete input image {file_path}: {e}")
 
 
 def ocr_image_to_text(image_path):
@@ -155,7 +186,7 @@ def ocr_image_to_text(image_path):
     # Draw a green rectangle on the right half to show the OCR detection area
     cv2.rectangle(vis_img, (width//2, 0), (width, height), (0, 255, 0), 2)
 
-    valid_words = ['22G1', '22G0', '45R1', '22T1']
+    valid_words = ['22G1', '22G0', '45R1', '22T1', '22UG']
 
     # instance text detector
     reader = easyocr.Reader(['en'], gpu=False)
@@ -229,7 +260,8 @@ def ocr_image_to_text(image_path):
     first_three = [text for i, text,
                    _ in all_detected_text[:5] if text]
     # print(first_three)
-    combined_text = ''.join(first_three)
+    text = ''.join(first_three)
+    combined_text = ''.join(text.split())
     # print(combined_text)
     combined_text_no_container = combined_text[0:11]
     combined_text_type_container = combined_text[11:15]
