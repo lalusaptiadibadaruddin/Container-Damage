@@ -145,9 +145,11 @@ def ocr_image_to_text(image_path):
     # print(first_three)
     text = ''.join(first_three)
     combined_text = ''.join(text.split())
-    # print(combined_text)
+
     combined_text_no_container = combined_text[0:11]
+    print(combined_text_no_container)
     combined_text_type_container = combined_text[11:15]
+    print(combined_text_type_container)
 
     return combined_text_no_container, combined_text_type_container
 
@@ -260,10 +262,11 @@ def prepare_payload(container_number, container_type, image_data):
     payload = {
         "no_container": container_number,
         "container_type": container_type,
+        "status_container": "IN/OUT",
         "details": json.dumps(details_list)
     }
 
-    # print(payload)
+    print(payload)
 
     return payload
 
