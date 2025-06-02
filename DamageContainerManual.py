@@ -23,12 +23,23 @@ yolo_model = YOLO(os.path.join(base_dir, "Weights", "yolov8.pt"))
 # definisi class
 class_labels = ['Karat', 'Lubang', 'Patah', 'Penyok', 'Retak']
 
-# Naik satu folder ke root project
-root_dir = os.path.abspath(os.path.join(base_dir, '..'))
 
-# Bangun path akhir
-upload_dir = os.path.join(
-    root_dir, 'monitoring-container-damage-be', 'uploads', 'manual-scan')
+def generate_upload_path(scan_type):
+    root_dir = os.path.abspath(os.path.join(base_dir, '..'))
+    # now = datetime.datetime.now()
+    # timestamp = now.strftime("%d%m%Y-%H%M%S")
+
+    if scan_type == "manual":
+        upload_dir = os.path.join(
+            root_dir, 'monitoring-container-damage-be', 'uploads', 'manual-scan')
+    elif scan_type == "rescan":
+        upload_dir = os.path.join(
+            root_dir, 'monitoring-container-damage-be', 'uploads', 'container-damages')
+    else:
+        raise ValueError("Invalid scan_type. Use 'manual' or 'rescan'.")
+
+    os.makedirs(upload_dir, exist_ok=True)
+    return upload_dir
 
 
 def generate_jwt_token():
@@ -148,9 +159,9 @@ def ocr_image_to_text(image_path):
     combined_text = ''.join(text.split())
 
     combined_text_no_container = combined_text[0:11]
-    print(combined_text_no_container)
+    # print(combined_text_no_container)
     combined_text_type_container = combined_text[11:15]
-    print(combined_text_type_container)
+    # print(combined_text_type_container)
 
     return combined_text_no_container, combined_text_type_container
 
@@ -274,7 +285,8 @@ def prepare_payload(container_number, container_type, image_data, status_contain
     # container_uid is only required for OUT status
     if status_container == "OUT":
         if container_uid is None:
-            raise ValueError("container_uid is required when status_container is 'OUT'")
+            raise ValueError(
+                "container_uid is required when status_container is 'OUT'")
         payload["container_uid"] = container_uid
     elif status_container == "IN" and container_uid is not None:
         # For IN status, container_uid is optional but can be included if provided
@@ -352,7 +364,8 @@ def cleanup_files(image_data, upload_dir):
                     print(f"Failed to delete input image {input_path}: {e}")
 
 
-def process_scan_manual_images(upload_dir, status_container="IN", user_id=None, container_uid=None):
+def process_scan_manual_images(scan_type=None, status_container="IN", user_id=None, container_uid=None):
+    upload_dir = generate_upload_path(scan_type=scan_type)
     container_number, container_type, image_data = collect_images(upload_dir)
 
     if not image_data.get("Back"):
@@ -366,7 +379,8 @@ def process_scan_manual_images(upload_dir, status_container="IN", user_id=None, 
         return
 
     try:
-        payload = prepare_payload(container_number, container_type, image_data, status_container, user_id, container_uid)
+        payload = prepare_payload(container_number, container_type,
+                                  image_data, status_container, user_id, container_uid)
         files = prepare_files(image_data)
         send_to_api(payload, files)
     except ValueError as e:
@@ -379,6 +393,7 @@ def process_scan_manual_images(upload_dir, status_container="IN", user_id=None, 
 
 if __name__ == "__main__":
     # Parse command line arguments
+    scan_type = "manual"
     status_container = "IN"
     user_id = None
     container_uid = None
@@ -389,12 +404,15 @@ if __name__ == "__main__":
             # Parse JSON data from command line argument
             script_data = json.loads(sys.argv[1])
             status_container = script_data.get("status_container", "IN")
+            scan_type = script_data.get("scan_type")
             user_id = script_data.get("userId")
             container_uid = script_data.get("container_uid")
 
-            print(f"Received parameters: status_container={status_container}, userId={user_id}, container_uid={container_uid}")
+            print(
+                f"Received parameters: status_container={status_container}, userId={user_id}, container_uid={container_uid}")
         except (json.JSONDecodeError, IndexError) as e:
             print(f"Error parsing command line arguments: {e}")
             print("Using default parameters")
 
-    process_scan_manual_images(upload_dir, status_container, user_id, container_uid)
+    process_scan_manual_images(
+        scan_type, status_container, user_id, container_uid)
