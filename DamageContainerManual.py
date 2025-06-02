@@ -203,15 +203,18 @@ def detect_damage_yolo(image_path, prefix):
     }
     # Buat list kategori dalam format yang diinginkan
     categories = []
-    for label, count in damage_counter.items():
-        if count > 0:
-            categories.append({
-                "name": label_mapping[label],
-                "damageSeverity": "1",  # bisa diubah sesuai logika
-                "damageTotal": count
-            })
+    for label in class_labels:
+        mapped_name = label_mapping.get(label, label.lower())
+        count = damage_counter[label]
+
+        categories.append({
+            "name": mapped_name,
+            "damageSeverity": "1" if count > 0 else "0",
+            "damageTotal": count
+        })
 
     return {
+        "original_path": image_path,
         "image_path": annotated_path,
         "detail": {
             "damageLocation": prefix,
@@ -236,6 +239,11 @@ def collect_images(upload_dir, image_extensions=(".jpg", ".jpeg", ".png")):
 
         if prefix == "Back":
             container_number, container_type = ocr_image_to_text(image_path)
+            if not container_number or len(container_number.strip()) < 12:
+                now = datetime.datetime.now()
+                default_date_str = now.strftime("%d%m%Y-%H%M%S")
+                container_number = f"{default_date_str}-0001"
+                container_type = "0000"
 
         image_data[prefix] = detect_damage_yolo(image_path, prefix)
 
@@ -254,6 +262,8 @@ def prepare_payload(container_number, container_type, image_data):
         "container_type": container_type,
         "details": json.dumps(details_list)
     }
+
+    # print(payload)
 
     return payload
 
@@ -303,24 +313,26 @@ def send_to_api(payload, files):
 
 def cleanup_files(image_data, upload_dir):
     for side in ["Back", "Left", "Top", "Right"]:
-        if image_data[side] and "image_path" in image_data[side]:
-            try:
-                os.remove(image_data[side]["image_path"])
-                print(f"Deleted result: {image_data[side]['image_path']}")
-                time.sleep(0.2)
-            except Exception as e:
-                print(
-                    f"Failed to delete result image {image_data[side]['image_path']}: {e}")
+        if image_data.get(side):
+            if "image_path" in image_data[side]:
+                result_path = image_data[side]["image_path"]
+                try:
+                    if os.path.exists(result_path):
+                        os.remove(result_path)
+                        print(f"Deleted result: {result_path}")
+                        time.sleep(0.2)
+                except Exception as e:
+                    print(f"Failed to delete result image {result_path}: {e}")
 
-    for filename in os.listdir(upload_dir):
-        if filename.lower().endswith((".jpg", ".jpeg", ".png")):
-            file_path = os.path.join(upload_dir, filename)
-            try:
-                os.remove(file_path)
-                print(f"Deleted input: {file_path}")
-                time.sleep(0.2)
-            except Exception as e:
-                print(f"Failed to delete input image {file_path}: {e}")
+            if "original_path" in image_data[side]:
+                input_path = image_data[side]["original_path"]
+                try:
+                    if os.path.exists(input_path):
+                        os.remove(input_path)
+                        print(f"Deleted input: {input_path}")
+                        time.sleep(0.2)
+                except Exception as e:
+                    print(f"Failed to delete input image {input_path}: {e}")
 
 
 def process_scan_manual_images(upload_dir):
