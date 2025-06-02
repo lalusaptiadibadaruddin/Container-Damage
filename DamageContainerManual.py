@@ -198,10 +198,10 @@ def detect_damage_yolo(image_path, prefix):
     # Mapping label
     label_mapping = {
         "Karat": "rust",
-        "Lubang": "hole",
-        "Patah": "broken",
+        "Lubang": "holes",
+        "Patah": "breaks",
         "Penyok": "dents",
-        "Retak": "crack"
+        "Retak": "cracks"
     }
     # Buat list kategori dalam format yang diinginkan
     categories = []
@@ -262,11 +262,11 @@ def prepare_payload(container_number, container_type, image_data):
     payload = {
         "no_container": container_number,
         "container_type": container_type,
-        "status_container": "IN/OUT",
+        "status_container": "IN",
         "details": json.dumps(details_list)
     }
 
-    print(payload)
+    # print(payload)
 
     return payload
 
