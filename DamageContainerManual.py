@@ -241,7 +241,7 @@ def collect_images(upload_dir, image_extensions=(".jpg", ".jpeg", ".png")):
 
         if prefix == "Back":
             container_number, container_type = ocr_image_to_text(image_path)
-            if not container_number or len(container_number.strip()) < 12:
+            if not container_number or len(container_number.strip()) < 11:
                 now = datetime.datetime.now()
                 default_date_str = now.strftime("%d%m%Y-%H%M%S")
                 container_number = f"{default_date_str}-0001"
