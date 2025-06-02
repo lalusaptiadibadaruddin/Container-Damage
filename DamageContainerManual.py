@@ -10,6 +10,7 @@ import json
 import datetime
 import cv2
 import jwt
+import sys
 from requests.exceptions import ConnectionError
 
 
@@ -27,7 +28,7 @@ root_dir = os.path.abspath(os.path.join(base_dir, '..'))
 
 # Bangun path akhir
 upload_dir = os.path.join(
-    root_dir, 'containerdamage', 'monitoring-container-damage-be', 'uploads', 'manual-scan')
+    root_dir, 'monitoring-container-damage-be', 'uploads', 'manual-scan')
 
 
 def generate_jwt_token():
@@ -252,7 +253,7 @@ def collect_images(upload_dir, image_extensions=(".jpg", ".jpeg", ".png")):
     return container_number, container_type, image_data
 
 
-def prepare_payload(container_number, container_type, image_data):
+def prepare_payload(container_number, container_type, image_data, status_container="IN", user_id=None, container_uid=None):
     details_list = []
 
     for side in ["Back", "Left", "Top", "Right"]:
@@ -262,9 +263,22 @@ def prepare_payload(container_number, container_type, image_data):
     payload = {
         "no_container": container_number,
         "container_type": container_type,
-        "status_container": "IN",
+        "status_container": status_container,
         "details": json.dumps(details_list)
     }
+
+    # Add optional parameters if provided
+    if user_id is not None:
+        payload["userId"] = user_id
+
+    # container_uid is only required for OUT status
+    if status_container == "OUT":
+        if container_uid is None:
+            raise ValueError("container_uid is required when status_container is 'OUT'")
+        payload["container_uid"] = container_uid
+    elif status_container == "IN" and container_uid is not None:
+        # For IN status, container_uid is optional but can be included if provided
+        payload["container_uid"] = container_uid
 
     # print(payload)
 
@@ -287,7 +301,7 @@ def prepare_files(image_data):
 
 def send_to_api(payload, files):
     token = generate_jwt_token()
-    url = "http://localhost:3000/api/containers/auto-scan"
+    url = "http://localhost:5000/api/containers/auto-scan"
     headers = {
         'Authorization': f'Bearer {token}'
     }
@@ -338,7 +352,7 @@ def cleanup_files(image_data, upload_dir):
                     print(f"Failed to delete input image {input_path}: {e}")
 
 
-def process_scan_manual_images(upload_dir):
+def process_scan_manual_images(upload_dir, status_container="IN", user_id=None, container_uid=None):
     container_number, container_type, image_data = collect_images(upload_dir)
 
     if not image_data.get("Back"):
@@ -351,11 +365,36 @@ def process_scan_manual_images(upload_dir):
         cleanup_files(image_data, upload_dir)
         return
 
-    payload = prepare_payload(container_number, container_type, image_data)
-    files = prepare_files(image_data)
-    send_to_api(payload, files)
+    try:
+        payload = prepare_payload(container_number, container_type, image_data, status_container, user_id, container_uid)
+        files = prepare_files(image_data)
+        send_to_api(payload, files)
+    except ValueError as e:
+        print(f"Error: {e}")
+        cleanup_files(image_data, upload_dir)
+        return
+
     cleanup_files(image_data, upload_dir)
 
 
 if __name__ == "__main__":
-    process_scan_manual_images(upload_dir)
+    # Parse command line arguments
+    status_container = "IN"
+    user_id = None
+    container_uid = None
+
+    # Check if parameters were passed from Node.js
+    if len(sys.argv) > 1:
+        try:
+            # Parse JSON data from command line argument
+            script_data = json.loads(sys.argv[1])
+            status_container = script_data.get("status_container", "IN")
+            user_id = script_data.get("userId")
+            container_uid = script_data.get("container_uid")
+
+            print(f"Received parameters: status_container={status_container}, userId={user_id}, container_uid={container_uid}")
+        except (json.JSONDecodeError, IndexError) as e:
+            print(f"Error parsing command line arguments: {e}")
+            print("Using default parameters")
+
+    process_scan_manual_images(upload_dir, status_container, user_id, container_uid)
