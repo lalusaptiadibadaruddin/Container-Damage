@@ -39,6 +39,7 @@ def generate_upload_path(scan_type):
         raise ValueError("Invalid scan_type. Use 'manual' or 'rescan'.")
 
     os.makedirs(upload_dir, exist_ok=True)
+
     return upload_dir
 
 
@@ -80,7 +81,7 @@ def ocr_image_to_text(image_path):
     # Draw a green rectangle on the right half to show the OCR detection area
     cv2.rectangle(vis_img, (width//2, 0), (width, height), (0, 255, 0), 2)
 
-    valid_words = ['22G1', '22G0', '45R1', '22T1']
+    valid_words = ['22G1', '22G0', '45R1', '22T1', '42G1', '45G1']
 
     # instance text detector
     reader = easyocr.Reader(['en'], gpu=False)
@@ -292,8 +293,6 @@ def prepare_payload(container_number, container_type, image_data, status_contain
         # For IN status, container_uid is optional but can be included if provided
         payload["container_uid"] = container_uid
 
-    # print(payload)
-
     return payload
 
 
@@ -370,6 +369,7 @@ def process_scan_manual_images(scan_type=None, status_container="IN", user_id=No
 
     if not image_data.get("Back"):
         print("Gambar Back harus tersedia.")
+        print(upload_dir)
         cleanup_files(image_data, upload_dir)
         return
 
@@ -383,6 +383,7 @@ def process_scan_manual_images(scan_type=None, status_container="IN", user_id=No
                                   image_data, status_container, user_id, container_uid)
         files = prepare_files(image_data)
         send_to_api(payload, files)
+        print(payload)
     except ValueError as e:
         print(f"Error: {e}")
         cleanup_files(image_data, upload_dir)
@@ -393,7 +394,7 @@ def process_scan_manual_images(scan_type=None, status_container="IN", user_id=No
 
 if __name__ == "__main__":
     # Parse command line arguments
-    scan_type = "manual"
+    scan_type = None
     status_container = "IN"
     user_id = None
     container_uid = None
