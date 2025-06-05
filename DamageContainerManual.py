@@ -24,7 +24,7 @@ yolo_model = YOLO(os.path.join(base_dir, "Weights", "yolov8.pt"))
 class_labels = ['Karat', 'Lubang', 'Patah', 'Penyok', 'Retak']
 
 
-def generate_upload_path(scan_type):
+def generate_upload_path(scan_type="manual"):
     root_dir = os.path.abspath(os.path.join(base_dir, '..'))
     # now = datetime.datetime.now()
     # timestamp = now.strftime("%d%m%Y-%H%M%S")
@@ -254,7 +254,7 @@ def collect_images(upload_dir, image_extensions=(".jpg", ".jpeg", ".png")):
 
         if prefix == "Back":
             container_number, container_type = ocr_image_to_text(image_path)
-            if not container_number or len(container_number.strip()) < 11:
+            if not container_number or len(container_number.strip()) == 11:
                 now = datetime.datetime.now()
                 default_date_str = now.strftime("%d%m%Y-%H%M%S")
                 container_number = f"{default_date_str}-0001"
@@ -265,17 +265,80 @@ def collect_images(upload_dir, image_extensions=(".jpg", ".jpeg", ".png")):
     return container_number, container_type, image_data
 
 
+def check_image_brightness(image_path, threshold=100):
+    img = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
+    if img is None:
+        return "gelap"
+    mean_brightness = img.mean()
+    return "terang" if mean_brightness > threshold else "gelap"
+
+
 def prepare_payload(container_number, container_type, image_data, status_container="IN", user_id=None, container_uid=None):
     details_list = []
 
+    # Check each side status (hasil ok jika image_data[side] ada dan categories detected)
+    side_status = {}
+    image_status = {}
+    # for side in ["Back", "Left", "Top", "Right"]:
+    #     if image_data.get(side):
+    #         categories = image_data[side]["detail"].get("categories", [])
+    #         # Anggap 'hasil ok' jika total damage lebih dari 0 untuk kategori apa pun
+    #         total_damage = sum(int(c.get("damageTotal", 0))
+    #                            for c in categories)
+    #         side_status[side.lower()] = "damage" if total_damage > 0 else "ok"
+    #     else:
+    #         side_status[side.lower()] = "ok"
+
+    # Cek brightness tiap sisi
+
+    # for side in ["Back", "Left", "Top", "Right"]:
+    #     if image_data.get(side) and "image_path" in image_data[side]:
+    #         image_status[side.lower()] = check_image_brightness(
+    #             image_data[side]["image_path"])
+    #     else:
+    #         # default jika gambar tidak tersedia
+    #         image_status[side.lower()] = "gelap"
+
+    # Status nomor kontainer
+    no_container_status = "terdeteksi" if container_number and len(
+        container_number.strip()) >= 11 else "tidak terdeteksi"
+
+    message_text = "success" if no_container_status == "terdeteksi" else "failed"
+
     for side in ["Back", "Left", "Top", "Right"]:
+        side_lower = side.lower()
         if image_data[side]:
-            details_list.append(image_data[side]["detail"])
+            categories = image_data[side]["detail"].get("categories", [])
+            total_damage = sum(int(c.get("damageTotal", 0))
+                               for c in categories)
+            side_status[side_lower] = "damage" if total_damage > 0 else "ok"
+            # Ambil path gambar dari image_data
+            image_path = image_data[side].get("image_path")
+            if image_path:
+                # Panggil fungsi check_image_brightness untuk cek terang/gelap
+                image_status[side_lower] = check_image_brightness(image_path)
+            else:
+                image_status[side_lower] = "normal"
+
+            # Gabungkan semua detail + status ke dalam details_list
+            detail = image_data[side]["detail"].copy()
+            detail.update({
+                "side_status": side_status[side_lower],
+                "image_status": image_status[side_lower]
+            })
+            details_list.append(detail)
+        else:
+            side_status[side_lower] = "ok"
+            image_status[side_lower] = "normal"
 
     payload = {
         "no_container": container_number,
         "container_type": container_type,
         "status_container": status_container,
+        "message": {
+            "message_text": message_text,
+            "no_container_status": no_container_status
+        },
         "details": json.dumps(details_list)
     }
 
@@ -363,7 +426,7 @@ def cleanup_files(image_data, upload_dir):
                     print(f"Failed to delete input image {input_path}: {e}")
 
 
-def process_scan_manual_images(scan_type=None, status_container="IN", user_id=None, container_uid=None):
+def process_scan_manual_images(scan_type="manual", status_container="IN", user_id=None, container_uid=None):
     upload_dir = generate_upload_path(scan_type=scan_type)
     container_number, container_type, image_data = collect_images(upload_dir)
 
@@ -394,7 +457,7 @@ def process_scan_manual_images(scan_type=None, status_container="IN", user_id=No
 
 if __name__ == "__main__":
     # Parse command line arguments
-    scan_type = None
+    scan_type = "manual"
     status_container = "IN"
     user_id = None
     container_uid = None
