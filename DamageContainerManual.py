@@ -254,7 +254,7 @@ def collect_images(upload_dir, image_extensions=(".jpg", ".jpeg", ".png")):
 
         if prefix == "Back":
             container_number, container_type = ocr_image_to_text(image_path)
-            if not container_number or len(container_number.strip()) == 11:
+            if not container_number or len(container_number.strip()) != 11:
                 now = datetime.datetime.now()
                 default_date_str = now.strftime("%d%m%Y-%H%M%S")
                 container_number = f"{default_date_str}-0001"
@@ -303,42 +303,50 @@ def prepare_payload(container_number, container_type, image_data, status_contain
     no_container_status = "terdeteksi" if container_number and len(
         container_number.strip()) >= 11 else "tidak terdeteksi"
 
-    message_text = "success" if no_container_status == "terdeteksi" else "failed"
+    # Track condition status for each side to determine overall status
+    condition_statuses = []
 
     for side in ["Back", "Left", "Top", "Right"]:
         side_lower = side.lower()
         if image_data[side]:
-            categories = image_data[side]["detail"].get("categories", [])
-            total_damage = sum(int(c.get("damageTotal", 0))
-                               for c in categories)
-            side_status[side_lower] = "damage" if total_damage > 0 else "ok"
             # Ambil path gambar dari image_data
             image_path = image_data[side].get("image_path")
             if image_path:
                 # Panggil fungsi check_image_brightness untuk cek terang/gelap
                 image_status[side_lower] = check_image_brightness(image_path)
+                # Set side_status berdasarkan kualitas gambar, bukan damage
+                side_status[side_lower] = "ok" if image_status[side_lower] == "terang" else "not ok"
             else:
                 image_status[side_lower] = "normal"
+                side_status[side_lower] = "not ok"  # Jika tidak ada gambar, status not ok
+
+            # Set condition_status based on side_status
+            condition_status = "success" if side_status[side_lower] == "ok" else "failed"
+            condition_statuses.append(condition_status)
 
             # Gabungkan semua detail + status ke dalam details_list
             detail = image_data[side]["detail"].copy()
             detail.update({
                 "side_status": side_status[side_lower],
-                "image_status": image_status[side_lower]
+                "image_status": image_status[side_lower],
+                "condition_status": condition_status
             })
             details_list.append(detail)
         else:
-            side_status[side_lower] = "ok"
+            side_status[side_lower] = "not ok"  # Jika tidak ada gambar, status not ok
             image_status[side_lower] = "normal"
+            condition_statuses.append("failed")  # Default to failed for missing sides
+
+    # Overall status is success only if all condition_statuses are success
+    all_conditions_success = all(cs == "success" for cs in condition_statuses)
+    status = "success" if all_conditions_success else "failed"
 
     payload = {
         "no_container": container_number,
         "container_type": container_type,
         "status_container": status_container,
-        "message": {
-            "message_text": message_text,
-            "no_container_status": no_container_status
-        },
+        "status": status,
+        "no_container_status": no_container_status,
         "details": json.dumps(details_list)
     }
 
