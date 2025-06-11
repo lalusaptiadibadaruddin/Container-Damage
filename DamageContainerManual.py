@@ -203,8 +203,7 @@ def detect_damage_yolo(image_path, prefix):
         y_offset += 25
 
     # Simpan hasil dengan anotasi
-    annotated_path = image_path.replace(
-        ".jpg", f"_detected.jpg")
+    annotated_path = image_path.replace(".jpg", f"_detected.jpg")
 
     cv2.imwrite(annotated_path, img)
 
@@ -318,7 +317,8 @@ def prepare_payload(container_number, container_type, image_data, status_contain
                 side_status[side_lower] = "ok" if image_status[side_lower] == "terang" else "not ok"
             else:
                 image_status[side_lower] = "normal"
-                side_status[side_lower] = "not ok"  # Jika tidak ada gambar, status not ok
+                # Jika tidak ada gambar, status not ok
+                side_status[side_lower] = "not ok"
 
             # Set condition_status based on side_status
             condition_status = "success" if side_status[side_lower] == "ok" else "failed"
@@ -333,9 +333,11 @@ def prepare_payload(container_number, container_type, image_data, status_contain
             })
             details_list.append(detail)
         else:
-            side_status[side_lower] = "not ok"  # Jika tidak ada gambar, status not ok
+            # Jika tidak ada gambar, status not ok
+            side_status[side_lower] = "not ok"
             image_status[side_lower] = "normal"
-            condition_statuses.append("failed")  # Default to failed for missing sides
+            # Default to failed for missing sides
+            condition_statuses.append("failed")
 
     # Overall status is success only if all condition_statuses are success
     all_conditions_success = all(cs == "success" for cs in condition_statuses)
@@ -415,6 +417,7 @@ def cleanup_files(image_data, upload_dir):
         if image_data.get(side):
             if "image_path" in image_data[side]:
                 result_path = image_data[side]["image_path"]
+                print(result_path)
                 try:
                     if os.path.exists(result_path):
                         os.remove(result_path)
