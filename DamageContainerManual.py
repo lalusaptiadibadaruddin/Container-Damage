@@ -24,7 +24,7 @@ yolo_model = YOLO(os.path.join(base_dir, "Weights", "yolov8.pt"))
 class_labels = ['Karat', 'Lubang', 'Patah', 'Penyok', 'Retak']
 
 
-def generate_upload_path(scan_type="manual"):
+def generate_upload_path(scan_type="manual", container_uid=None):
     root_dir = os.path.abspath(os.path.join(base_dir, '..'))
     # now = datetime.datetime.now()
     # timestamp = now.strftime("%d%m%Y-%H%M%S")
@@ -33,12 +33,38 @@ def generate_upload_path(scan_type="manual"):
         upload_dir = os.path.join(
             root_dir, 'monitoring-container-damage-be', 'uploads', 'manual-scan')
     elif scan_type == "rescan":
-        upload_dir = os.path.join(
-            root_dir, 'monitoring-container-damage-be', 'uploads', 'container-damages')
+        if container_uid:
+            # For rescan, we need to find the original folder for this container
+            # We'll search in the container-damages directory structure
+            container_damages_dir = os.path.join(
+                root_dir, 'monitoring-container-damage-be', 'uploads', 'container-damages')
+
+            # Search for the container's original folder
+            upload_dir = None
+            if os.path.exists(container_damages_dir):
+                for container_folder in os.listdir(container_damages_dir):
+                    container_path = os.path.join(container_damages_dir, container_folder)
+                    if os.path.isdir(container_path):
+                        for date_folder in os.listdir(container_path):
+                            date_path = os.path.join(container_path, date_folder)
+                            if os.path.isdir(date_path):
+                                original_path = os.path.join(date_path, 'original', container_uid)
+                                if os.path.exists(original_path):
+                                    upload_dir = original_path
+                                    break
+                        if upload_dir:
+                            break
+
+            if not upload_dir:
+                raise ValueError(f"Original images folder not found for container_uid: {container_uid}")
+        else:
+            raise ValueError("container_uid is required for rescan")
     else:
         raise ValueError("Invalid scan_type. Use 'manual' or 'rescan'.")
 
-    os.makedirs(upload_dir, exist_ok=True)
+    # For manual scan, create directory if it doesn't exist
+    if scan_type == "manual":
+        os.makedirs(upload_dir, exist_ok=True)
 
     return upload_dir
 
@@ -273,7 +299,7 @@ def check_image_brightness(image_path, threshold=100):
     return "terang" if mean_brightness > threshold else "gelap"
 
 
-def prepare_payload(container_number, container_type, image_data, status_container="IN", user_id=None, container_uid=None):
+def prepare_payload(container_number, container_type, image_data, status_container="IN", user_id=None, container_uid=None, scan_type="manual"):
     details_list = []
 
     # Check each side status (hasil ok jika image_data[side] ada dan categories detected)
@@ -347,7 +373,8 @@ def prepare_payload(container_number, container_type, image_data, status_contain
         "status_container": status_container,
         "status": status,
         "no_container_status": no_container_status,
-        "details": json.dumps(details_list)
+        "details": json.dumps(details_list),
+        "scan_type": scan_type
     }
 
     # Add optional parameters if provided
@@ -439,7 +466,7 @@ def cleanup_files(image_data, upload_dir):
 
 
 def process_scan_manual_images(scan_type="manual", status_container="IN", user_id=None, container_uid=None):
-    upload_dir = generate_upload_path(scan_type=scan_type)
+    upload_dir = generate_upload_path(scan_type=scan_type, container_uid=container_uid)
     container_number, container_type, image_data = collect_images(upload_dir)
 
     if not image_data.get("Back"):
@@ -455,7 +482,7 @@ def process_scan_manual_images(scan_type="manual", status_container="IN", user_i
 
     try:
         payload = prepare_payload(container_number, container_type,
-                                  image_data, status_container, user_id, container_uid)
+                                  image_data, status_container, user_id, container_uid, scan_type)
         files = prepare_files(image_data)
         send_to_api(payload, files)
         print(payload)
