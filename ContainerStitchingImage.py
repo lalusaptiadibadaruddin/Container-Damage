@@ -2,6 +2,8 @@ import cv2
 import os
 import numpy as np
 from datetime import datetime
+import sys
+import json
 
 base_dir = os.path.dirname(os.path.abspath(__file__))
 root_dir = os.path.abspath(os.path.join(base_dir, '..'))
@@ -56,4 +58,18 @@ def stitch_images(upload_dir, label):
 
 if __name__ == "__main__":
     label = "left"
+    # Check if parameters were passed from Node.js
+    if len(sys.argv) > 1:
+        try:
+            # Parse JSON data from command line argument
+            script_data = json.loads(sys.argv[1])
+
+            label = script_data.get("label")
+
+            print(
+                f"Received parameters: label={label}")
+        except (json.JSONDecodeError, IndexError) as e:
+            print(f"Error parsing command line arguments: {e}")
+            print("Using default parameters")
+
     stitch_images(upload_dir, label)
