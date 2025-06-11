@@ -344,7 +344,8 @@ def prepare_payload(container_number, container_type, image_data, status_contain
                 side_status[side_lower] = "ok" if image_status[side_lower] == "terang" else "not ok"
             else:
                 image_status[side_lower] = "normal"
-                side_status[side_lower] = "not ok"  # Jika tidak ada gambar, status not ok
+                # Jika tidak ada gambar, status not ok
+                side_status[side_lower] = "not ok"
 
             # Set condition_status based on side_status
             condition_status = "success" if side_status[side_lower] == "ok" else "failed"
@@ -359,9 +360,11 @@ def prepare_payload(container_number, container_type, image_data, status_contain
             })
             details_list.append(detail)
         else:
-            side_status[side_lower] = "not ok"  # Jika tidak ada gambar, status not ok
+            # Jika tidak ada gambar, status not ok
+            side_status[side_lower] = "not ok"
             image_status[side_lower] = "normal"
-            condition_statuses.append("failed")  # Default to failed for missing sides
+            # Default to failed for missing sides
+            condition_statuses.append("failed")
 
     # Overall status is success only if all condition_statuses are success
     all_conditions_success = all(cs == "success" for cs in condition_statuses)
@@ -450,7 +453,8 @@ def cleanup_files(image_data, upload_dir):
                             print(f"Deleted detected result: {result_path}")
                             time.sleep(0.2)
                     except Exception as e:
-                        print(f"Failed to delete detected result image {result_path}: {e}")
+                        print(
+                            f"Failed to delete detected result image {result_path}: {e}")
 
             if "original_path" in image_data[side]:
                 input_path = image_data[side]["original_path"]
@@ -462,7 +466,8 @@ def cleanup_files(image_data, upload_dir):
                             print(f"Deleted detected input: {input_path}")
                             time.sleep(0.2)
                     except Exception as e:
-                        print(f"Failed to delete detected input image {input_path}: {e}")
+                        print(
+                            f"Failed to delete detected input image {input_path}: {e}")
 
 
 def process_scan_manual_images(scan_type="manual", status_container="IN", user_id=None, container_uid=None):
