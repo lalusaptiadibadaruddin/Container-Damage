@@ -415,23 +415,27 @@ def cleanup_files(image_data, upload_dir):
         if image_data.get(side):
             if "image_path" in image_data[side]:
                 result_path = image_data[side]["image_path"]
-                try:
-                    if os.path.exists(result_path):
-                        os.remove(result_path)
-                        print(f"Deleted result: {result_path}")
-                        time.sleep(0.2)
-                except Exception as e:
-                    print(f"Failed to delete result image {result_path}: {e}")
+                # Hanya hapus file yang mengandung "_detected"
+                if "_detected" in result_path:
+                    try:
+                        if os.path.exists(result_path):
+                            os.remove(result_path)
+                            print(f"Deleted detected result: {result_path}")
+                            time.sleep(0.2)
+                    except Exception as e:
+                        print(f"Failed to delete detected result image {result_path}: {e}")
 
             if "original_path" in image_data[side]:
                 input_path = image_data[side]["original_path"]
-                try:
-                    if os.path.exists(input_path):
-                        os.remove(input_path)
-                        print(f"Deleted input: {input_path}")
-                        time.sleep(0.2)
-                except Exception as e:
-                    print(f"Failed to delete input image {input_path}: {e}")
+                # Hanya hapus file yang mengandung "_detected"
+                if "_detected" in input_path:
+                    try:
+                        if os.path.exists(input_path):
+                            os.remove(input_path)
+                            print(f"Deleted detected input: {input_path}")
+                            time.sleep(0.2)
+                    except Exception as e:
+                        print(f"Failed to delete detected input image {input_path}: {e}")
 
 
 def process_scan_manual_images(scan_type="manual", status_container="IN", user_id=None, container_uid=None):
