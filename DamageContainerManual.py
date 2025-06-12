@@ -39,8 +39,10 @@ def generate_upload_path(scan_type="manual", container_uid=None):
             container_damages_dir = os.path.join(
                 root_dir, 'monitoring-container-damage-be', 'uploads', 'container-damages')
 
-            # Search for the container's original folder
+            # Search for the container's original folder with status
             upload_dir = None
+            status_folder = status_container.lower()  # 'in' or 'out'
+
             if os.path.exists(container_damages_dir):
                 for container_folder in os.listdir(container_damages_dir):
                     container_path = os.path.join(container_damages_dir, container_folder)
@@ -48,15 +50,17 @@ def generate_upload_path(scan_type="manual", container_uid=None):
                         for date_folder in os.listdir(container_path):
                             date_path = os.path.join(container_path, date_folder)
                             if os.path.isdir(date_path):
-                                original_path = os.path.join(date_path, 'original', container_uid)
+                                # Updated path structure: uploads/container-damages/{containerNumber}/{date}/{containerUID}/original/{status}/
+                                original_path = os.path.join(date_path, container_uid, 'original', status_folder)
                                 if os.path.exists(original_path):
                                     upload_dir = original_path
+                                    print(f"Found original images folder for {status_container} rescan: {upload_dir}")
                                     break
                         if upload_dir:
                             break
 
             if not upload_dir:
-                raise ValueError(f"Original images folder not found for container_uid: {container_uid}")
+                raise ValueError(f"Original images folder not found for container_uid: {container_uid} with status: {status_container}")
         else:
             raise ValueError("container_uid is required for rescan")
     else:
