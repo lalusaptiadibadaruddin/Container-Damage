@@ -24,7 +24,7 @@ yolo_model = YOLO(os.path.join(base_dir, "Weights", "yolov8.pt"))
 class_labels = ['Karat', 'Lubang', 'Patah', 'Penyok', 'Retak']
 
 
-def generate_upload_path(scan_type="manual"):
+def generate_upload_path(scan_type="manual", container_uid=None):
     root_dir = os.path.abspath(os.path.join(base_dir, '..'))
     # now = datetime.datetime.now()
     # timestamp = now.strftime("%d%m%Y-%H%M%S")
@@ -33,12 +33,42 @@ def generate_upload_path(scan_type="manual"):
         upload_dir = os.path.join(
             root_dir, 'monitoring-container-damage-be', 'uploads', 'manual-scan')
     elif scan_type == "rescan":
-        upload_dir = os.path.join(
-            root_dir, 'monitoring-container-damage-be', 'uploads', 'container-damages')
+        if container_uid:
+            # For rescan, we need to find the original folder for this container
+            # We'll search in the container-damages directory structure
+            container_damages_dir = os.path.join(
+                root_dir, 'monitoring-container-damage-be', 'uploads', 'container-damages')
+
+            # Search for the container's original folder with status
+            upload_dir = None
+            status_folder = status_container.lower()  # 'in' or 'out'
+
+            if os.path.exists(container_damages_dir):
+                for container_folder in os.listdir(container_damages_dir):
+                    container_path = os.path.join(container_damages_dir, container_folder)
+                    if os.path.isdir(container_path):
+                        for date_folder in os.listdir(container_path):
+                            date_path = os.path.join(container_path, date_folder)
+                            if os.path.isdir(date_path):
+                                # Updated path structure: uploads/container-damages/{containerNumber}/{date}/{containerUID}/original/{status}/
+                                original_path = os.path.join(date_path, container_uid, 'original', status_folder)
+                                if os.path.exists(original_path):
+                                    upload_dir = original_path
+                                    print(f"Found original images folder for {status_container} rescan: {upload_dir}")
+                                    break
+                        if upload_dir:
+                            break
+
+            if not upload_dir:
+                raise ValueError(f"Original images folder not found for container_uid: {container_uid} with status: {status_container}")
+        else:
+            raise ValueError("container_uid is required for rescan")
     else:
         raise ValueError("Invalid scan_type. Use 'manual' or 'rescan'.")
 
-    os.makedirs(upload_dir, exist_ok=True)
+    # For manual scan, create directory if it doesn't exist
+    if scan_type == "manual":
+        os.makedirs(upload_dir, exist_ok=True)
 
     return upload_dir
 
@@ -273,7 +303,7 @@ def check_image_brightness(image_path, threshold=100):
     return "terang" if mean_brightness > threshold else "gelap"
 
 
-def prepare_payload(container_number, container_type, image_data, status_container="IN", user_id=None, container_uid=None):
+def prepare_payload(container_number, container_type, image_data, status_container="IN", user_id=None, container_uid=None, scan_type="manual"):
     details_list = []
 
     # Check each side status (hasil ok jika image_data[side] ada dan categories detected)
@@ -318,8 +348,7 @@ def prepare_payload(container_number, container_type, image_data, status_contain
                 side_status[side_lower] = "ok" if image_status[side_lower] == "terang" else "not ok"
             else:
                 image_status[side_lower] = "normal"
-                # Jika tidak ada gambar, status not ok
-                side_status[side_lower] = "not ok"
+                side_status[side_lower] = "not ok"  # Jika tidak ada gambar, status not ok
 
             # Set condition_status based on side_status
             condition_status = "success" if side_status[side_lower] == "ok" else "failed"
@@ -334,11 +363,9 @@ def prepare_payload(container_number, container_type, image_data, status_contain
             })
             details_list.append(detail)
         else:
-            # Jika tidak ada gambar, status not ok
-            side_status[side_lower] = "not ok"
+            side_status[side_lower] = "not ok"  # Jika tidak ada gambar, status not ok
             image_status[side_lower] = "normal"
-            # Default to failed for missing sides
-            condition_statuses.append("failed")
+            condition_statuses.append("failed")  # Default to failed for missing sides
 
     # Overall status is success only if all condition_statuses are success
     all_conditions_success = all(cs == "success" for cs in condition_statuses)
@@ -350,7 +377,8 @@ def prepare_payload(container_number, container_type, image_data, status_contain
         "status_container": status_container,
         "status": status,
         "no_container_status": no_container_status,
-        "details": json.dumps(details_list)
+        "details": json.dumps(details_list),
+        "scan_type": scan_type
     }
 
     # Add optional parameters if provided
@@ -426,8 +454,7 @@ def cleanup_files(image_data, upload_dir):
                             print(f"Deleted detected result: {result_path}")
                             time.sleep(0.2)
                     except Exception as e:
-                        print(
-                            f"Failed to delete detected result image {result_path}: {e}")
+                        print(f"Failed to delete detected result image {result_path}: {e}")
 
             if "original_path" in image_data[side]:
                 input_path = image_data[side]["original_path"]
@@ -439,12 +466,11 @@ def cleanup_files(image_data, upload_dir):
                             print(f"Deleted detected input: {input_path}")
                             time.sleep(0.2)
                     except Exception as e:
-                        print(
-                            f"Failed to delete detected input image {input_path}: {e}")
+                        print(f"Failed to delete detected input image {input_path}: {e}")
 
 
 def process_scan_manual_images(scan_type="manual", status_container="IN", user_id=None, container_uid=None):
-    upload_dir = generate_upload_path(scan_type=scan_type)
+    upload_dir = generate_upload_path(scan_type=scan_type, container_uid=container_uid)
     container_number, container_type, image_data = collect_images(upload_dir)
 
     if not image_data.get("Back"):
@@ -460,7 +486,7 @@ def process_scan_manual_images(scan_type="manual", status_container="IN", user_i
 
     try:
         payload = prepare_payload(container_number, container_type,
-                                  image_data, status_container, user_id, container_uid)
+                                  image_data, status_container, user_id, container_uid, scan_type)
         files = prepare_files(image_data)
         send_to_api(payload, files)
         print(payload)
