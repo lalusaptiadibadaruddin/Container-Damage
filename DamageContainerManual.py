@@ -449,7 +449,7 @@ def process_scan_manual_images(scan_type="manual", status_container="IN", user_i
 
     if not image_data.get("Back"):
         print("Gambar Back harus tersedia.")
-        print(upload_dir)
+        # print(upload_dir)
         cleanup_files(image_data, upload_dir)
         return
 
