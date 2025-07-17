@@ -20,7 +20,7 @@ from concurrent.futures import ThreadPoolExecutor
 base_dir = os.path.dirname(os.path.abspath(__file__))
 
 # Load YOLO model with absolute path
-yolo_model = YOLO(os.path.join(base_dir, "Weights", "yolov11.pt"))
+yolo_model = YOLO(os.path.join(base_dir, "Weights", "yolov8.pt"))
 
 # definisi class
 class_labels = ['Karat', 'Lubang', 'Patah', 'Penyok', 'Retak']
