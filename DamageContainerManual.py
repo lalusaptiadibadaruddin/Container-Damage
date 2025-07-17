@@ -20,10 +20,11 @@ from concurrent.futures import ThreadPoolExecutor
 base_dir = os.path.dirname(os.path.abspath(__file__))
 
 # Load YOLO model with absolute path
-yolo_model = YOLO(os.path.join(base_dir, "Weights", "yolov8.pt"))
+yolo_model = YOLO(os.path.join(base_dir, "Weights", "yolov11.pt"))
 
 # definisi class
 class_labels = ['Karat', 'Lubang', 'Patah', 'Penyok', 'Retak']
+# class_labels = ['Penyok', 'Lubang', 'Karat', 'Patah', 'Retak']
 
 def is_gpu_available():
     try:
@@ -207,11 +208,14 @@ def ocr_image_to_text(image_path):
 
 
 def detect_damage_yolo(image_path, prefix):
-    results = yolo_model(image_path)[0]
+    # results = yolo_model(image_path)[0]
     # Inisialisasi dengan semua label dan nilai 0
     damage_counter = {label: 0 for label in class_labels}
     # Baca ulang gambar
     img = cv2.imread(image_path)
+    img_resized = cv2.resize(img, (640, 640))  #resize input image to 640x640 for YOLOv8
+    results = yolo_model(img_resized)[0]
+
     # damage_counter = Counter()
     for box in results.boxes:
         x1, y1, x2, y2 = map(int, box.xyxy[0])
@@ -255,6 +259,7 @@ def detect_damage_yolo(image_path, prefix):
         "Penyok": "dents",
         "Retak": "cracks"
     }
+    
     # Buat list kategori dalam format yang diinginkan
     categories = []
     for label in class_labels:
