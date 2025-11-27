@@ -13,6 +13,7 @@ import jwt
 import sys
 from requests.exceptions import ConnectionError
 import numpy as np
+from concurrent.futures import ThreadPoolExecutor
 
 
 # Get the directory of the current script
@@ -23,7 +24,15 @@ yolo_model = YOLO(os.path.join(base_dir, "Weights", "yolov8.pt"))
 
 # definisi class
 class_labels = ['Karat', 'Lubang', 'Patah', 'Penyok', 'Retak']
+# class_labels = ['Penyok', 'Lubang', 'Karat', 'Patah', 'Retak']
 
+def is_gpu_available():
+    try:
+        import torch
+        return torch.cuda.is_available()
+    except ImportError:
+        return False
+    
 
 def generate_upload_path(scan_type="manual", container_uid=None):
     root_dir = os.path.abspath(os.path.join(base_dir, '..'))
@@ -115,7 +124,7 @@ def ocr_image_to_text(image_path):
     valid_words = ['22G1', '22G0', '45R1', '22T1', '42G1', '45G1']
 
     # instance text detector
-    reader = easyocr.Reader(['en'], gpu=False)
+    reader = easyocr.Reader(['en'], gpu=is_gpu_available())
     # detect text on zoomed right half of image
     text_ = reader.readtext(zoomed_right_half)
     threshold = 0.25
@@ -199,11 +208,14 @@ def ocr_image_to_text(image_path):
 
 
 def detect_damage_yolo(image_path, prefix):
-    results = yolo_model(image_path)[0]
+    # results = yolo_model(image_path)[0]
     # Inisialisasi dengan semua label dan nilai 0
     damage_counter = {label: 0 for label in class_labels}
     # Baca ulang gambar
     img = cv2.imread(image_path)
+    img_resized = cv2.resize(img, (640, 640))  #resize input image to 640x640 for YOLOv8
+    results = yolo_model(img_resized)[0]
+
     # damage_counter = Counter()
     for box in results.boxes:
         x1, y1, x2, y2 = map(int, box.xyxy[0])
@@ -247,6 +259,7 @@ def detect_damage_yolo(image_path, prefix):
         "Penyok": "dents",
         "Retak": "cracks"
     }
+    
     # Buat list kategori dalam format yang diinginkan
     categories = []
     for label in class_labels:
@@ -268,32 +281,62 @@ def detect_damage_yolo(image_path, prefix):
         }
     }
 
+def process_side(prefix, image_path):
+    if prefix == "Back":
+        container_number, container_type = ocr_image_to_text(image_path)
+    else:
+        container_number = container_type = None
 
-def collect_images(upload_dir, image_extensions=(".jpg", ".jpeg", ".png")):
+    result = detect_damage_yolo(image_path, prefix)
+    return prefix, container_number, container_type, result
+
+def collect_images(upload_dir):
     image_data = {"Back": None, "Left": None, "Top": None, "Right": None}
     container_number = container_type = ""
+    tasks = []
 
-    for filename in os.listdir(upload_dir):
-        if not filename.lower().endswith(image_extensions):
-            continue
+    with ThreadPoolExecutor() as executor:
+        for filename in os.listdir(upload_dir):
+            if filename.lower().endswith(('.jpg', '.jpeg', '.png')):
+                prefix = filename.split('-')[0].capitalize()
+                if prefix in image_data:
+                    path = os.path.join(upload_dir, filename)
+                    tasks.append(executor.submit(process_side, prefix, path))
 
-        prefix = filename.split('-')[0].capitalize()
-        if prefix not in image_data:
-            continue
-
-        image_path = os.path.join(upload_dir, filename)
-
-        if prefix == "Back":
-            container_number, container_type = ocr_image_to_text(image_path)
-            if not container_number or len(container_number.strip()) != 11:
-                now = datetime.datetime.now()
-                default_date_str = now.strftime("%d%m%Y-%H%M%S")
-                container_number = f"{default_date_str}-0001"
-                container_type = "0000"
-
-        image_data[prefix] = detect_damage_yolo(image_path, prefix)
+        for future in tasks:
+            prefix, cnum, ctype, result = future.result()
+            image_data[prefix] = result
+            if prefix == "Back" and cnum:
+                container_number = cnum
+                container_type = ctype
 
     return container_number, container_type, image_data
+
+# def collect_images(upload_dir, image_extensions=(".jpg", ".jpeg", ".png")):
+#     image_data = {"Back": None, "Left": None, "Top": None, "Right": None}
+#     container_number = container_type = ""
+
+#     for filename in os.listdir(upload_dir):
+#         if not filename.lower().endswith(image_extensions):
+#             continue
+
+#         prefix = filename.split('-')[0].capitalize()
+#         if prefix not in image_data:
+#             continue
+
+#         image_path = os.path.join(upload_dir, filename)
+
+#         if prefix == "Back":
+#             container_number, container_type = ocr_image_to_text(image_path)
+#             if not container_number or len(container_number.strip()) != 11:
+#                 now = datetime.datetime.now()
+#                 default_date_str = now.strftime("%d%m%Y-%H%M%S")
+#                 container_number = f"{default_date_str}-0001"
+#                 container_type = "0000"
+
+#         image_data[prefix] = detect_damage_yolo(image_path, prefix)
+
+#     return container_number, container_type, image_data
 
 
 # def check_image_brightness(image_path, threshold=100):
@@ -432,6 +475,7 @@ def send_to_api(payload, files):
         'Authorization': f'Bearer {token}'
     }
 
+    print(token)
     try:
         response = requests.post(url, headers=headers,
                                  data=payload, files=files, timeout=10)

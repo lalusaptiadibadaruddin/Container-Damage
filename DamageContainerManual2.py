@@ -12,7 +12,6 @@ import cv2
 import jwt
 import sys
 from requests.exceptions import ConnectionError
-import numpy as np
 
 
 # Get the directory of the current script
@@ -82,8 +81,8 @@ def generate_jwt_token():
     code = {
         # You can use any identifier that makes sense
         "userId": "container-damage-detector",
-        "iat": datetime.datetime.now(datetime.timezone.utc),
-        "exp": datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=1)
+        "iat": datetime.datetime.utcnow(),
+        "exp": datetime.datetime.utcnow() + datetime.timedelta(hours=1)
     }
 
     # Generate the token
@@ -296,24 +295,12 @@ def collect_images(upload_dir, image_extensions=(".jpg", ".jpeg", ".png")):
     return container_number, container_type, image_data
 
 
-# def check_image_brightness(image_path, threshold=100):
-#     img = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
-#     if img is None:
-#         return "gelap"
-#     mean_brightness = img.mean()
-#     return "terang" if mean_brightness > threshold else "gelap"
-
-def check_image_brightness(image_path, brightness_threshold=120, bright_pixel_ratio=0.02):
+def check_image_brightness(image_path, threshold=100):
     img = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
     if img is None:
         return "gelap"
-
-    # Hitung proporsi piksel terang
-    bright_pixels = np.sum(img > brightness_threshold)
-    total_pixels = img.size
-
-    ratio = bright_pixels / total_pixels
-    return "terang" if ratio > bright_pixel_ratio else "gelap"
+    mean_brightness = img.mean()
+    return "terang" if mean_brightness > threshold else "gelap"
 
 
 def prepare_payload(container_number, container_type, image_data, status_container="IN", user_id=None, container_uid=None, scan_type="manual"):
